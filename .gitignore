@@ -1,3 +1,4 @@
 html_files/
-logs.log
-script.sh
+arxiv_digest.log
+.last_check
+.env
