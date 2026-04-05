@@ -102,7 +102,7 @@ class ArxivFetcher:
         raw = self.config.date_range
         today = datetime.date.today()
 
-        if raw == "since-last-check":
+        if raw == "since-last":
             if self.config.last_check == 0:
                 raw = "1"
             else:

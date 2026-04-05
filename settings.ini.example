@@ -26,5 +26,5 @@ show_in_console = false
 enabled = false
 smtp_host = smtp.gmail.com
 smtp_port = 587
-from = sukiboo.rpi@gmail.com
-to = dereventsov@gmail.com
+from =
+to =

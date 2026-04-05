@@ -1,4 +1,5 @@
 html_files/
 arxiv_digest.log
 .last_check
+settings.ini
 .env
