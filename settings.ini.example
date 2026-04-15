@@ -3,14 +3,17 @@
 # full list: https://arxiv.org/category_taxonomy
 subjects = cs.ai cs.lg stat.ml math.na
 
-# date range for retrieving submissions
-#   n             papers from n days ago (if n=1 on Monday, fetches Friday's)
-#   n-m           papers from n to m days ago
-#   since-last    papers since the last successful run
-date_range = 1
-
 # maximum results per API query (500 is sufficient for ~10 archives daily)
 max_results = 500
+
+# arXiv client pagination and retry behavior
+page_size = 100
+delay_seconds = 5
+num_retries = 10
+
+# outer retry when the whole fetch fails (e.g. after arxiv.Client exhausts num_retries)
+retry_attempts = 2
+retry_wait = 300
 
 # keywords to highlight in titles and authors (comma-separated)
 keywords = sample_keyword, sample_author
@@ -20,6 +23,10 @@ font_face = helvetica
 font_size = 10pt
 # print paper details to console (true/false)
 show_in_console = false
+
+[deploy]
+# cron schedule for the VPS run (UTC); default: 0 11 * * * = 7am ET daily
+cron_schedule = "0 11 * * *"
 
 [email]
 # set enabled = true to send the report via email after each run

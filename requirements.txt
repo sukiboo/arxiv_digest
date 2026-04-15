@@ -1,2 +1,3 @@
 arxiv>=2.0
 python-dotenv
+tenacity

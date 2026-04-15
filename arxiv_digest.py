@@ -8,6 +8,7 @@ import sys
 from email.message import EmailMessage
 
 import arxiv
+import tenacity
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -32,10 +33,13 @@ class Config:
 
         try:
             # arxiv
-            self.subjects = config.get("arxiv", "subjects").split()
-            self.subjects = [s.lower() for s in self.subjects]
-            self.date_range = config.get("arxiv", "date_range").strip()
+            self.subjects = config.get("arxiv", "subjects").lower().split()
             self.max_results = config.getint("arxiv", "max_results")
+            self.page_size = config.getint("arxiv", "page_size", fallback=100)
+            self.delay_seconds = config.getfloat("arxiv", "delay_seconds", fallback=5)
+            self.num_retries = config.getint("arxiv", "num_retries", fallback=10)
+            self.retry_attempts = config.getint("arxiv", "retry_attempts", fallback=2)
+            self.retry_wait = config.getfloat("arxiv", "retry_wait", fallback=300)
             raw_keywords = config.get("arxiv", "keywords").strip()
             self.keywords = [k.strip() for k in raw_keywords.split(",") if k.strip()]
 
@@ -78,69 +82,45 @@ class ArxivFetcher:
         self.config = config
 
     def fetch(self):
-        date_strings, date_title, date_name = self._parse_date_range()
-        query = "cat:" + " OR cat:".join(self.config.subjects)
+        cutoff = (
+            self.config.last_check
+            or (
+                datetime.datetime.now(tz=datetime.timezone.utc) - datetime.timedelta(days=1)
+            ).timestamp()
+        )
+        cutoff_dt = datetime.datetime.fromtimestamp(cutoff, tz=datetime.timezone.utc)
+        date_title = f'since {cutoff_dt.strftime("%d %B %Y %H:%M UTC")}'
+        date_name = str(datetime.datetime.now(tz=datetime.timezone.utc).date())
 
-        client = arxiv.Client()
+        query = "cat:" + " OR cat:".join(self.config.subjects)
+        client = arxiv.Client(
+            page_size=self.config.page_size,
+            delay_seconds=self.config.delay_seconds,
+            num_retries=self.config.num_retries,
+        )
         search = arxiv.Search(
             query=query,
             max_results=self.config.max_results,
             sort_by=arxiv.SortCriterion.LastUpdatedDate,
         )
 
+        retry = tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(self.config.retry_attempts),
+            wait=tenacity.wait_fixed(self.config.retry_wait),
+            before_sleep=tenacity.before_sleep_log(log, logging.WARNING),
+            reraise=True,
+        )
         try:
-            results = list(client.results(search))
+            results = retry(lambda: list(client.results(search)))
         except Exception as e:
             log.error(f"Failed to fetch from arXiv: {e}")
             sys.exit(1)
 
-        papers = self._filter_results(results, date_strings)
+        papers = self._filter_results(results, cutoff)
         papers.sort(key=lambda p: self.config.subjects.index(p["primary_category"]))
         return papers, date_title, date_name
 
-    def _parse_date_range(self):
-        raw = self.config.date_range
-        today = datetime.date.today()
-
-        if raw == "since-last":
-            if self.config.last_check == 0:
-                raw = "1"
-            else:
-                last_dt = datetime.datetime.fromtimestamp(
-                    self.config.last_check, tz=datetime.timezone.utc
-                )
-                date_title = f'since {last_dt.strftime("%d %B %Y %H:%M UTC")}'
-                date_name = str(today)
-                return None, date_title, date_name
-
-        parts = raw.split("-")
-
-        if len(parts) == 1:
-            n = int(parts[0])
-            if n == 1 and today.strftime("%A") == "Monday":
-                n = 3
-            start = today - datetime.timedelta(days=n)
-            date_strings = [str(start)]
-            date_title = start.strftime("%d %B %Y")
-            date_name = str(start)
-
-        elif len(parts) == 2:
-            n, m = int(parts[0]), int(parts[1])
-            date_strings = [str(today - datetime.timedelta(days=d)) for d in range(n, m + 1)][::-1]
-            date_title = (
-                datetime.date.fromisoformat(date_strings[0]).strftime("%d %B %Y")
-                + " -- "
-                + datetime.date.fromisoformat(date_strings[-1]).strftime("%d %B %Y")
-            )
-            date_name = f"{date_strings[0]} to {date_strings[-1]}"
-
-        else:
-            log.error(f'Invalid date_range: "{self.config.date_range}"')
-            sys.exit(1)
-
-        return date_strings, date_title, date_name
-
-    def _filter_results(self, results, date_strings):
+    def _filter_results(self, results, cutoff):
         subjects = self.config.subjects
         papers = []
 
@@ -148,13 +128,8 @@ class ArxivFetcher:
             primary = r.primary_category.lower()
             if primary not in subjects:
                 continue
-
-            if date_strings is None:
-                if r.updated.timestamp() <= self.config.last_check:
-                    continue
-            else:
-                if r.updated.strftime("%Y-%m-%d") not in date_strings:
-                    continue
+            if r.updated.timestamp() <= cutoff:
+                continue
 
             papers.append(
                 {

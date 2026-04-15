@@ -3,11 +3,12 @@ set -euo pipefail
 
 ENV_FILE="./.env"
 SETTINGS_FILE="./settings.ini"
-CRON_SCHEDULE="0 11 * * *"  # 7am ET = 11:00 UTC
 
 for f in "$ENV_FILE" "$SETTINGS_FILE"; do
   [[ -f "$f" ]] || { echo "ERROR: $f not found."; exit 1; }
 done
+
+CRON_SCHEDULE=$(python3 -c "import configparser; c=configparser.ConfigParser(); c.read('$SETTINGS_FILE'); print(c.get('deploy','cron_schedule').strip().strip('\"').strip(\"'\"))")
 
 set -a; source "$ENV_FILE"; set +a
 

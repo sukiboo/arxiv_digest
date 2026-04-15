@@ -26,7 +26,7 @@ python arxiv_digest.py
 Output goes to `html_files/`. If email is enabled in `settings.ini`, the report is also sent via email.
 
 ### Deploying to a server
-The included `deploy.sh` script deploys to a remote server and sets up a daily cron job.
+The included `deploy.sh` script deploys to a remote server and sets up a cron job on the schedule configured in `settings.ini` under `[deploy]`.
 
 Add server connection details to your `.env`:
 ```
@@ -40,7 +40,7 @@ Then run:
 ./deploy.sh
 ```
 
-This will clone/pull the repo on the server, copy your config files, set up a Python venv, and install a cron job to run daily at 7am ET. Re-run `./deploy.sh` after any changes.
+This will clone/pull the repo on the server, copy your config files, set up a Python venv, and install the cron job. Each run fetches arXiv submissions added since the previous successful run (tracked in `.last_check`). Re-run `./deploy.sh` after any changes.
 
 ### License
 This project is licensed under the [MIT License](https://mit-license.org/).
